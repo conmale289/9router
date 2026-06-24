@@ -58,6 +58,8 @@ const COOLDOWN = {
  */
 export const ERROR_RULES = [
   // --- Text-based rules (checked first, order = priority) ---
+  { text: "credit limit",             cooldownMs: 10 * 60 * 1000 }, // permanent until top-up, use long cooldown
+  { text: "insufficient balance",     cooldownMs: 10 * 60 * 1000 },
   { text: "no credentials",           cooldownMs: COOLDOWN.long },
   { text: "request not allowed",      cooldownMs: COOLDOWN.short },
   { text: "improperly formed request", cooldownMs: COOLDOWN.long },

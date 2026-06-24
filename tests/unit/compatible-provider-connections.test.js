@@ -145,7 +145,7 @@ describe("compatible provider connections API", () => {
     });
   });
 
-  it("returns 400 for a duplicate connection on the same compatible node", async () => {
+  it("allows multiple connections on the same compatible node for round-robin", async () => {
     const ctx = await setupTestContext({
       id: "openai-compatible-duplicate-test",
       type: "openai-compatible",
@@ -157,14 +157,22 @@ describe("compatible provider connections API", () => {
     cleanup = ctx.cleanup;
 
     const firstResponse = await ctx.POST(makeRequest(ctx.node.id));
-    const secondResponse = await ctx.POST(makeRequest(ctx.node.id));
-    const secondBody = await secondResponse.json();
+    const secondResponse = await ctx.POST(
+      new Request("https://9router.local/api/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: ctx.node.id,
+          apiKey: "test-key-2",
+          name: "Test Connection 2",
+          defaultModel: "test-model",
+        }),
+      })
+    );
     const storedConnections = await ctx.getProviderConnections({ provider: ctx.node.id });
 
     expect(firstResponse.status).toBe(201);
-    expect(secondResponse.status).toBe(400);
-    expect(secondBody.error).toContain("Only one connection is allowed");
-    expect(storedConnections).toHaveLength(1);
-    expectCompatibleConnection(storedConnections[0], ctx.node, { apiType: "chat" });
+    expect(secondResponse.status).toBe(201);
+    expect(storedConnections).toHaveLength(2);
   });
 });

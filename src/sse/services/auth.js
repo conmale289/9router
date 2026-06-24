@@ -67,6 +67,29 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       return true;
     });
 
+    // Auto-recovery: clear expired locks and reset testStatus for connections
+    // that were previously locked but are now available again
+    for (const c of availableConnections) {
+      if (c.testStatus === "unavailable" || c.testStatus === "error") {
+        const expiredLockKeys = Object.keys(c).filter(k =>
+          k.startsWith("modelLock_") && c[k] && new Date(c[k]).getTime() <= Date.now()
+        );
+        if (expiredLockKeys.length > 0 || !isModelLockActive(c, null)) {
+          const clearObj = Object.fromEntries(expiredLockKeys.map(k => [k, null]));
+          // Only reset status if no active locks remain
+          const hasActiveLocks = Object.keys(c).some(k =>
+            k.startsWith("modelLock_") && c[k] && !expiredLockKeys.includes(k) && new Date(c[k]).getTime() > Date.now()
+          );
+          if (!hasActiveLocks) {
+            Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0 });
+          }
+          if (Object.keys(clearObj).length > 0) {
+            updateProviderConnection(c.id, clearObj).catch(() => {});
+          }
+        }
+      }
+    }
+
     log.debug("AUTH", `${provider} | available: ${availableConnections.length}/${connections.length}`);
     connections.forEach(c => {
       const excluded = excludeSet.has(c.id);
