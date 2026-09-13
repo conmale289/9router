@@ -24,6 +24,11 @@ export const CLAUDE_CONFIG = { ...PROVIDER_OAUTH["claude"] };
 // Codex (OpenAI) OAuth Configuration (Authorization Code Flow with PKCE)
 export const CODEX_CONFIG = { ...PROVIDER_OAUTH["codex"] };
 
+// OpenAI Web (chatgpt.com) OAuth Configuration (Authorization Code Flow with PKCE)
+// Uses the platform ChatGPT OAuth client; tokens are used against the web
+// conversation API rather than the Codex CLI endpoint.
+export const OPENAI_WEB_CONFIG = { ...PROVIDER_OAUTH["openai-web"] };
+
 // Gemini (Google) OAuth Configuration (Standard OAuth2)
 // clientId/clientSecret from GOOGLE_OAUTH_CLIENT (shared.js) — not stored in registry
 export const GEMINI_CONFIG = { ...GOOGLE_OAUTH_CLIENT, ...PROVIDER_OAUTH["gemini-cli"] };

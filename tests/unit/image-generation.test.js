@@ -584,4 +584,76 @@ describe("handleImageGenerationCore", () => {
     expect(result.success).toBe(true);
     expect(onRequestSuccess).toHaveBeenCalledTimes(1);
   });
+
+  it("uses default OpenAI endpoint when no baseUrl override is set", async () => {
+    global.fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ created: 1, data: [{ url: "https://example.com/a.png" }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const result = await handleImageGenerationCore({
+      body: { prompt: "A cute cat" },
+      modelInfo: { provider: "openai", model: "dall-e-3" },
+      credentials: { apiKey: "test-key" },
+      log: null,
+    });
+
+    expect(result.success).toBe(true);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://api.openai.com/v1/images/generations",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("routes OpenAI image requests through a custom baseUrl override", async () => {
+    global.fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ created: 1, data: [{ url: "https://example.com/b.png" }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const result = await handleImageGenerationCore({
+      body: { prompt: "A cute cat" },
+      modelInfo: { provider: "openai", model: "dall-e-3" },
+      credentials: {
+        apiKey: "test-key",
+        providerSpecificData: { baseUrl: "https://proxy.example.com" },
+      },
+      log: null,
+    });
+
+    expect(result.success).toBe(true);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://proxy.example.com/v1/images/generations",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("uses a full custom image endpoint override as-is", async () => {
+    global.fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ created: 1, data: [{ url: "https://example.com/c.png" }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const result = await handleImageGenerationCore({
+      body: { prompt: "A cute cat" },
+      modelInfo: { provider: "openai", model: "dall-e-3" },
+      credentials: {
+        apiKey: "test-key",
+        providerSpecificData: { baseUrl: "https://proxy.example.com/v1/images/generations" },
+      },
+      log: null,
+    });
+
+    expect(result.success).toBe(true);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://proxy.example.com/v1/images/generations",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
 });

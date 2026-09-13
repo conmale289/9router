@@ -131,6 +131,12 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
               {noProxyText && <span className="text-[11px] text-text-muted truncate max-w-[320px]" title={noProxyText}>no_proxy: {noProxyText}</span>}
             </div>
           )}
+          {connection.providerSpecificData?.baseUrl && (
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <span className="text-[11px] text-text-muted">endpoint:</span>
+              <code className="text-[10px] font-mono bg-black/5 dark:bg-white/5 px-1 py-0.5 rounded text-text-muted truncate max-w-[420px]" title={connection.providerSpecificData.baseUrl}>{connection.providerSpecificData.baseUrl}</code>
+            </div>
+          )}
         </div>
       </div>
       <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-end">
@@ -196,7 +202,7 @@ ConnectionRow.propTypes = {
 // ── AddApiKeyModal ─────────────────────────────────────────────
 function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, onClose }) {
   const NONE = "__none__";
-  const [formData, setFormData] = useState({ name: "", apiKey: "", priority: 1, proxyPoolId: NONE });
+  const [formData, setFormData] = useState({ name: "", apiKey: "", priority: 1, proxyPoolId: NONE, baseUrl: "" });
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -207,7 +213,11 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
       const res = await fetch("/api/providers/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, apiKey: formData.apiKey }),
+        body: JSON.stringify({
+          provider,
+          apiKey: formData.apiKey,
+          ...(formData.baseUrl.trim() ? { providerSpecificData: { baseUrl: formData.baseUrl.trim() } } : {}),
+        }),
       });
       const data = await res.json();
       setValidationResult(data.valid ? "success" : "failed");
@@ -225,7 +235,11 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
         const res = await fetch("/api/providers/validate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider, apiKey: formData.apiKey }),
+          body: JSON.stringify({
+            provider,
+            apiKey: formData.apiKey,
+            ...(formData.baseUrl.trim() ? { providerSpecificData: { baseUrl: formData.baseUrl.trim() } } : {}),
+          }),
         });
         const data = await res.json();
         isValid = !!data.valid;
@@ -238,6 +252,9 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
         priority: formData.priority,
         proxyPoolId: formData.proxyPoolId === NONE ? null : formData.proxyPoolId,
         testStatus: isValid ? "active" : "unknown",
+        ...(formData.baseUrl.trim()
+          ? { providerSpecificData: { baseUrl: formData.baseUrl.trim() } }
+          : {}),
       });
     } finally { setSaving(false); }
   };
@@ -270,6 +287,11 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
         <div>
           <label className="text-xs text-text-muted mb-1 block">Priority</label>
           <input type="number" className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value) || 1 })} />
+        </div>
+        <div>
+          <label className="text-xs text-text-muted mb-1 block">Custom Base URL <span className="opacity-60">(optional)</span></label>
+          <input className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono" value={formData.baseUrl} onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })} placeholder="https://proxy.example.com/v1" />
+          <p className="text-[11px] text-text-muted mt-1">Routes media requests (image/TTS/STT/embeddings) through your endpoint. Leave blank for the provider default.</p>
         </div>
         <Select label="Proxy Pool" value={formData.proxyPoolId} onChange={(e) => setFormData({ ...formData, proxyPoolId: e.target.value })}
           options={[{ value: NONE, label: "None" }, ...(proxyPools || []).map((p) => ({ value: p.id, label: p.name }))]} />

@@ -80,12 +80,27 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
   }
 
   if (kind === "image") {
-    const res = await fetch(`${baseUrl}/api/v1/images/generations`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ model, prompt: "test" }),
-      signal: AbortSignal.timeout(15000),
-    });
+    // Image generation is slow (upstream render takes 30s+); give it 2 minutes.
+    // Chat/embedding/STT probes stay at 15s — only image needs the long window.
+    const IMAGE_PING_TIMEOUT_MS = 120000;
+    const imageStarted = Date.now();
+    let res;
+    try {
+      res = await fetch(`${baseUrl}/api/v1/images/generations`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ model, prompt: "test" }),
+        signal: AbortSignal.timeout(IMAGE_PING_TIMEOUT_MS),
+      });
+    } catch (err) {
+      return {
+        ok: false,
+        latencyMs: Date.now() - imageStarted,
+        error: err?.name === "TimeoutError" || err?.name === "AbortError"
+          ? `Image generation timed out after ${IMAGE_PING_TIMEOUT_MS / 1000}s (upstream render still running — the model itself may be fine)`
+          : (err?.message || "Image ping failed"),
+      };
+    }
     const latencyMs = Date.now() - start;
     const rawText = await res.text().catch(() => "");
     let parsed = null;

@@ -6,6 +6,7 @@ import { extractCodexAccountInfo, fetchKiroProfileArn } from "../providerHelpers
 
 import claude from "./claude.js";
 import codex from "./codex.js";
+import openaiWeb from "./openai-web.js";
 import xai from "./xai.js";
 import grokCli from "./grok-cli.js";
 import geminiCli from "./gemini-cli.js";
@@ -31,6 +32,7 @@ import zed from "./zed.js";
 const PROVIDERS = {
   claude,
   codex,
+  "openai-web": openaiWeb,
   xai,
   "grok-cli": grokCli,
   "gemini-cli": geminiCli,

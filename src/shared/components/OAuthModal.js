@@ -799,6 +799,8 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
                     ? "If xAI shows a code instead of redirecting, paste that code here."
                     : isKimchiProvider
                       ? "After authorization, copy the full callback URL or token from your browser."
+                    : provider === "openai-web"
+                      ? "After login you land on platform.openai.com/auth/callback?code=… — copy that full URL. Finish within a few minutes and don't refresh either page: the login session expires fast and used/expired codes are rejected."
                     : "After authorization, copy the full URL from your browser."}
                 </p>
                 <Input

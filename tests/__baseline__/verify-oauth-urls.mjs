@@ -15,6 +15,7 @@ const resolved = {
   tokenUrls: {
     claude: PROVIDERS.claude?.tokenUrl,
     codex: PROVIDERS.codex?.tokenUrl,
+    "openai-web": PROVIDERS["openai-web"]?.tokenUrl,
     iflow: PROVIDERS.iflow?.tokenUrl,
     kiro: PROVIDERS.kiro?.tokenUrl,
     xai: PROVIDERS.xai?.tokenUrl,
@@ -36,6 +37,7 @@ const resolved = {
   clientIds: {
     claude: PROVIDERS.claude?.clientId,
     codex: PROVIDERS.codex?.clientId,
+    "openai-web": PROVIDERS["openai-web"]?.clientId,
     iflow: PROVIDERS.iflow?.clientId,
     kimi: PROVIDERS.kimi?.clientId,
     "grok-cli": PROVIDERS["grok-cli"]?.clientId,

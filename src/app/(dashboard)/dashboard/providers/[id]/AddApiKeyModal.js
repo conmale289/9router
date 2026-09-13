@@ -11,6 +11,7 @@ const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, existingNames, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
+  const isOpenAIWeb = provider === "openai-web";
   const isCookie = authType === "cookie";
   const isXaiApiKey = provider === "xai" && !isCookie;
   const credentialLabel = isCookie ? "Cookie Value" : provider === "qoder" ? "Personal Access Token (PAT)" : "API Key";
@@ -30,6 +31,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     priority: 1,
     proxyPoolId: NONE_PROXY_POOL_VALUE,
     ollamaHostUrl: "",
+    webAccessToken: "",
+    webRefreshToken: "",
+    webSessionJson: "",
   });
   const [azureData, setAzureData] = useState({
     azureEndpoint: "",
@@ -51,6 +55,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [mode, setMode] = useState("single"); // "single" | "bulk"
   const [bulkText, setBulkText] = useState("");
   const [bulkResult, setBulkResult] = useState(null); // { success, failed }
+  const [importError, setImportError] = useState(null); // openai-web import failure
 
   const buildProviderSpecificData = () => {
     if (isOllamaLocal && formData.ollamaHostUrl.trim()) {
@@ -92,6 +97,10 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
   const handleSubmit = async () => {
     if (!provider) return;
+    if (isOpenAIWeb) {
+      await handleOpenAIWebSubmit();
+      return;
+    }
     if (!isOllamaLocal && !formData.apiKey) return;
     if (!isOllamaLocal) {
       // Non-ollama providers require a name
@@ -128,6 +137,42 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         testStatus: isValid ? "active" : "unknown",
         providerSpecificData: buildProviderSpecificData()
       });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // OpenAI Web: import a pasted ChatGPT session (access/refresh token or
+  // session JSON export) via the dedicated import route, which extracts
+  // account email/plan from the JWT and stores the token pair.
+  const handleOpenAIWebSubmit = async () => {
+    const sessionJson = formData.webSessionJson.trim();
+    const accessToken = formData.webAccessToken.trim();
+    if (!sessionJson && !accessToken) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/oauth/openai-web/import-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sessionJson
+          ? { sessionJson, name: formData.name.trim() || undefined }
+          : {
+              accessToken,
+              refreshToken: formData.webRefreshToken.trim() || undefined,
+              name: formData.name.trim() || undefined,
+            }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data?.error || "Import failed");
+      }
+      setValidationResult("success");
+      if (onBulkDone) onBulkDone();
+      onClose();
+    } catch (err) {
+      setValidationResult("failed");
+      setImportError(err?.message || "Import failed");
+      console.log("OpenAI Web import error:", err?.message || err);
     } finally {
       setSaving(false);
     }
@@ -190,13 +235,15 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   return (
     <Modal isOpen={isOpen} title={`Add ${providerName || provider} ${credentialLabel}`} onClose={onClose}>
       <div className="flex flex-col gap-4">
-        {/* Mode switcher */}
+        {/* Mode switcher (token-import providers only support single mode) */}
+        {!isOpenAIWeb && (
         <div className="flex gap-2">
           <Button size="sm" variant={mode === "single" ? "primary" : "ghost"} onClick={() => { setMode("single"); setBulkResult(null); }}>Single</Button>
           <Button size="sm" variant={mode === "bulk" ? "primary" : "ghost"} onClick={() => { setMode("bulk"); setBulkResult(null); }}>Bulk Add</Button>
         </div>
+        )}
 
-        {mode === "bulk" && (
+        {mode === "bulk" && !isOpenAIWeb && (
           <div className="flex flex-col gap-3">
             <p className="text-xs text-text-muted">
               {isCloudflareAi
@@ -249,7 +296,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             </div>
           </div>
         )}
-        {!isOllamaLocal && (
+        {!isOllamaLocal && !isOpenAIWeb && (
           <div className="flex gap-2">
             <Input
               label={credentialLabel}
@@ -265,6 +312,38 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               </Button>
             </div>
           </div>
+        )}
+        {isOpenAIWeb && (
+          <>
+            <Input
+              label="Access Token"
+              type="password"
+              value={formData.webAccessToken}
+              onChange={(e) => setFormData({ ...formData, webAccessToken: e.target.value })}
+              placeholder="eyJhbGciOi..."
+              hint="Paste the ChatGPT access token (from chatgpt.com session). Enables auto-refresh when a refresh token is also provided."
+              className="flex-1"
+            />
+            <Input
+              label="Refresh Token (optional)"
+              type="password"
+              value={formData.webRefreshToken}
+              onChange={(e) => setFormData({ ...formData, webRefreshToken: e.target.value })}
+              placeholder="Optional — enables automatic token renewal"
+            />
+            <div>
+              <label className="text-xs text-text-muted mb-1 block">...or Session JSON (alternative)</label>
+              <textarea
+                className="w-full rounded border border-accent/30 bg-sidebar p-2 text-xs font-mono resize-y min-h-[90px] focus:outline-none focus:ring-1 focus:ring-primary"
+                placeholder='{"access_token":"eyJ...","refresh_token":"..."}'
+                value={formData.webSessionJson}
+                onChange={(e) => setFormData({ ...formData, webSessionJson: e.target.value })}
+              />
+              <p className="text-xs text-text-muted mt-1">
+                Paste a session export instead of the tokens above — account email and plan are extracted automatically.
+              </p>
+            </div>
+          </>
         )}
         {isXaiApiKey && (
           <p className="text-xs text-text-muted">
@@ -312,6 +391,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         )}
         {error && (
           <p className="text-xs text-red-500 break-words">{error}</p>
+        )}
+        {importError && (
+          <p className="text-xs text-red-500 break-words">{importError}</p>
         )}
         {isCompatible && (
           <p className="text-xs text-text-muted">
@@ -393,7 +475,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         </p>
 
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || !formData.apiKey)) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (isCloudflareAi && !cloudflareData.accountId)}>
+          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && !isOpenAIWeb && (!formData.name || !formData.apiKey)) || (isOpenAIWeb && !formData.webAccessToken.trim() && !formData.webSessionJson.trim()) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (isCloudflareAi && !cloudflareData.accountId)}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>

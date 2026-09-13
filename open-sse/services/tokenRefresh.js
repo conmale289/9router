@@ -17,6 +17,7 @@ import {
   refreshTraeToken,
   refreshZedToken,
   refreshWindsurfToken,
+  refreshOpenAIWebToken,
   classifyOAuthRefreshError,
 } from "./tokenRefresh/providers.js";
 
@@ -28,6 +29,7 @@ export {
   refreshClaudeOAuthToken,
   refreshGoogleToken,
   refreshCodexToken,
+  refreshOpenAIWebToken,
   refreshKiroToken,
   refreshIflowToken,
   refreshGitHubToken,
@@ -137,6 +139,7 @@ const REFRESH_HANDLERS = {
   antigravity: (c, log) => refreshGoogleToken(c.refreshToken, PROVIDERS.antigravity.clientId, PROVIDERS.antigravity.clientSecret, log),
   claude: (c, log) => refreshClaudeOAuthToken(c.refreshToken, log),
   codex: (c, log) => refreshCodexToken(c.refreshToken, log),
+  "openai-web": (c, log) => refreshOpenAIWebToken(c.refreshToken, log),
   iflow: (c, log) => refreshIflowToken(c.refreshToken, log),
   github: (c, log) => refreshGitHubToken(c.refreshToken, log),
   kiro: (c, log) => refreshKiroToken(c.refreshToken, c.providerSpecificData, log),

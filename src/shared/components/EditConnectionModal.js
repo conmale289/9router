@@ -22,6 +22,11 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     organization: "",
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
+  const [baseUrl, setBaseUrl] = useState("");
+  const [webAccessToken, setWebAccessToken] = useState("");
+  const [webRefreshToken, setWebRefreshToken] = useState("");
+  const [webCookies, setWebCookies] = useState("");
+  const [webClearanceUrl, setWebClearanceUrl] = useState("");
   const [region, setRegion] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -48,6 +53,13 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (connection.provider === "cloudflare-ai" && connection.providerSpecificData) {
         setCloudflareData({ accountId: connection.providerSpecificData.accountId || "" });
       }
+      // Custom endpoint override (media kinds: image/TTS/STT/embeddings). Blank = provider default.
+      setBaseUrl(connection.providerSpecificData?.baseUrl || "");
+      // OpenAI Web token rotation fields always start blank (keep current).
+      setWebAccessToken("");
+      setWebRefreshToken("");
+      setWebCookies(connection.providerSpecificData?.cookies || "");
+      setWebClearanceUrl(connection.providerSpecificData?.clearanceUrl || "");
       // Load region for providers that support it (e.g. xiaomi-tokenplan)
       const providerCfg = AI_PROVIDERS?.[connection.provider];
       if (providerCfg?.regions) {
@@ -61,6 +73,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
 
   const isOAuth = connection?.authType === "oauth";
   const isAzure = connection?.provider === "azure";
+  const isOpenAIWeb = connection?.provider === "openai-web";
   const isCloudflareAi = connection?.provider === "cloudflare-ai";
   const isCompatible = connection
     ? (isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider))
@@ -72,6 +85,22 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     if (providerRegions && region) return { ...((connection?.providerSpecificData) || {}), region };
     return undefined;
   };
+
+  // Merge the custom base URL override into whatever providerSpecificData the
+  // validate/save call already carries (azure/cloudflare/region). Returns
+  // undefined when there is nothing to send (keeps the key out of the body).
+  const withBaseUrl = (psd) => {
+    const trimmed = baseUrl.trim();
+    const merged = { ...(psd || {}) };
+    if (trimmed) merged.baseUrl = trimmed;
+    return Object.keys(merged).length ? merged : undefined;
+  };
+
+  const buildValidationSpecificData = () => withBaseUrl({
+    ...(isAzure ? azureData : {}),
+    ...(isCloudflareAi ? cloudflareData : {}),
+    ...(providerRegions ? buildRegionSpecificData() : {}),
+  });
 
   const handleTest = async () => {
     if (!connection?.provider) return;
@@ -93,15 +122,14 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     setValidating(true);
     setValidationResult(null);
     try {
+      const validationPsd = buildValidationSpecificData();
       const res = await fetch("/api/providers/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider: connection.provider,
           apiKey: formData.apiKey,
-          ...(isAzure ? { providerSpecificData: azureData } : {}),
-          ...(isCloudflareAi ? { providerSpecificData: cloudflareData } : {}),
-          ...(providerRegions ? { providerSpecificData: buildRegionSpecificData() } : {}),
+          ...(validationPsd ? { providerSpecificData: validationPsd } : {}),
         }),
       });
       const data = await res.json();
@@ -128,15 +156,14 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
           try {
             setValidating(true);
             setValidationResult(null);
+            const validationPsd = buildValidationSpecificData();
             const res = await fetch("/api/providers/validate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 provider: connection.provider,
                 apiKey: formData.apiKey,
-                ...(isAzure ? { providerSpecificData: azureData } : {}),
-                ...(isCloudflareAi ? { providerSpecificData: cloudflareData } : {}),
-                ...(providerRegions ? { providerSpecificData: buildRegionSpecificData() } : {}),
+                ...(validationPsd ? { providerSpecificData: validationPsd } : {}),
               }),
             });
             const data = await res.json();
@@ -171,7 +198,43 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (providerRegions && region) {
         updates.providerSpecificData = buildRegionSpecificData();
       }
+      // Persist custom base URL override (blank clears it → provider default).
+      // Merge over existing providerSpecificData so other keys (region, proxy, …) survive.
+      if (!isOAuth && (baseUrl.trim() || connection.providerSpecificData?.baseUrl)) {
+        updates.providerSpecificData = {
+          ...((updates.providerSpecificData) || (connection.providerSpecificData) || {}),
+          baseUrl: baseUrl.trim(),
+        };
+        if (!baseUrl.trim()) delete updates.providerSpecificData.baseUrl;
+      }
       
+      // OpenAI Web session rotation (pasted ChatGPT tokens).
+      if (isOpenAIWeb) {
+        if (webAccessToken.trim()) updates.accessToken = webAccessToken.trim();
+        if (webRefreshToken.trim()) {
+          updates.refreshToken = webRefreshToken.trim();
+          if (connection.authType === "access_token") updates.authType = "oauth";
+        }
+        // Browser cookies are trust material (oai-did etc.). Blank clears.
+        const prevCookies = connection.providerSpecificData?.cookies || "";
+        if (webCookies.trim() || prevCookies) {
+          updates.providerSpecificData = {
+            ...((updates.providerSpecificData) || (connection.providerSpecificData) || {}),
+            ...(webCookies.trim() ? { cookies: webCookies.trim() } : {}),
+          };
+          if (!webCookies.trim()) delete updates.providerSpecificData.cookies;
+        }
+        // Clearance solver URL (FlareSolverr-compatible). Blank clears.
+        const prevClearance = connection.providerSpecificData?.clearanceUrl || "";
+        if (webClearanceUrl.trim() || prevClearance) {
+          updates.providerSpecificData = {
+            ...((updates.providerSpecificData) || (connection.providerSpecificData) || {}),
+            ...(webClearanceUrl.trim() ? { clearanceUrl: webClearanceUrl.trim().replace(/\/+$/, "") } : {}),
+          };
+          if (!webClearanceUrl.trim()) delete updates.providerSpecificData.clearanceUrl;
+        }
+      }
+
       await onSave(updates);
     } finally {
       setSaving(false);
@@ -202,7 +265,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
           onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value, 10) || 1 })}
         />
 
-        {!isOAuth && (
+        {!isOAuth && !isOpenAIWeb && (
           <>
             <div className="flex gap-2">
               <Input
@@ -225,6 +288,55 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
                 {validationResult === "success" ? "Valid" : "Invalid"}
               </Badge>
             )}
+          </>
+        )}
+
+        {!isOAuth && !isOpenAIWeb && (
+          <Input
+            label="Custom Base URL (optional)"
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder="https://proxy.example.com/v1"
+            hint="Routes media requests (image/TTS/STT/embeddings) through your endpoint. Leave blank for the provider default."
+          />
+        )}
+
+        {isOpenAIWeb && (
+          <>
+            <Input
+              label="Access Token"
+              type="password"
+              value={webAccessToken}
+              onChange={(e) => setWebAccessToken(e.target.value)}
+              placeholder="Enter new access token"
+              hint="Leave blank to keep the current token."
+            />
+            <Input
+              label="Refresh Token"
+              type="password"
+              value={webRefreshToken}
+              onChange={(e) => setWebRefreshToken(e.target.value)}
+              placeholder="Enter new refresh token"
+              hint="Leave blank to keep the current token. Adding one enables auto-refresh."
+            />
+            <div>
+              <label className="text-xs text-text-muted mb-1 block">Browser Cookies <span className="opacity-60">(optional)</span></label>
+              <textarea
+                className="w-full px-3 py-2 text-xs font-mono border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
+                rows={2}
+                value={webCookies}
+                onChange={(e) => setWebCookies(e.target.value)}
+                placeholder="oai-did=...; ..."
+              />
+              <p className="text-[11px] text-text-muted mt-1">Paste <code>oai-did</code> (+ other chatgpt.com cookies) from your logged-in browser to look less automated. Blank clears.</p>
+            </div>
+            <Input
+              label="Clearance Solver URL (optional)"
+              value={webClearanceUrl}
+              onChange={(e) => setWebClearanceUrl(e.target.value)}
+              placeholder="https://solver.example.com"
+              hint="FlareSolverr-compatible solver that passes the Cloudflare challenge for this server's network. Blank disables."
+            />
           </>
         )}
 

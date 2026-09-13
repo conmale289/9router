@@ -45,6 +45,10 @@ export const MAX_RATE_LIMIT_COOLDOWN_MS = 30 * 60 * 1000;
 const COOLDOWN = {
   long: 2 * 60 * 1000,
   short: 5 * 1000,
+  // Anti-abuse walls (e.g. ChatGPT "unusual activity", verification walls):
+  // the flag clears server-side over minutes–hours, so rest the account
+  // longer instead of burning attempts. Other accounts still serve via fallback.
+  wall: 10 * 60 * 1000,
 };
 
 /**
@@ -66,6 +70,8 @@ export const ERROR_RULES = [
   { text: "quota exceeded",           backoff: true },
   { text: "capacity",                 backoff: true },
   { text: "overloaded",               backoff: true },
+  { text: "unusual activity",         cooldownMs: COOLDOWN.wall },
+  { text: "verification wall",        cooldownMs: COOLDOWN.wall },
 
   // --- Status-based rules (fallback when text doesn't match) ---
   { status: 401, cooldownMs: COOLDOWN.long },

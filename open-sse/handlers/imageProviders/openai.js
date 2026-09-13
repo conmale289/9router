@@ -1,13 +1,29 @@
-// OpenAI-compatible adapter (used by openai, minimax, openrouter, recraft)
+// OpenAI-compatible adapter (used by openai, minimax, openrouter, recraft,
+// vercel-ai-gateway, xai). Default endpoint comes from the provider registry
+// (openai → https://api.openai.com/v1/images/generations); a per-connection
+// baseUrl override (credentials.providerSpecificData.baseUrl, also bare
+// credentials.baseUrl) wins when set — same opt-in pattern as STT/TTS/embeddings.
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
 const imageCfg = (id) => PROVIDER_MEDIA[id]?.imageConfig || {};
-const imageUrl = (id) => imageCfg(id).baseUrl;
+const defaultImageUrl = (id) => imageCfg(id).baseUrl;
+
+export function resolveOpenAIImageUrl(providerId, credentials) {
+  const fallback = defaultImageUrl(providerId);
+  const raw = credentials?.providerSpecificData?.baseUrl || credentials?.baseUrl;
+  if (!raw) return fallback;
+  const normalized = String(raw).trim().replace(/\/+$/, "");
+  if (!normalized) return fallback;
+  if (normalized.endsWith("/images/generations")) return normalized;
+  if (normalized.endsWith("/v1")) return `${normalized}/images/generations`;
+  if (/\/v1\/.+/.test(normalized)) return `${normalized}/images/generations`;
+  return `${normalized}/v1/images/generations`;
+}
 
 export default function createOpenAIAdapter(providerId) {
   const cfg = imageCfg(providerId);
   return {
-    buildUrl: () => imageUrl(providerId),
+    buildUrl: (model, credentials) => resolveOpenAIImageUrl(providerId, credentials),
     buildHeaders: (creds) => {
       const headers = { "Content-Type": "application/json", ...(cfg.headers || {}) };
       const key = creds?.apiKey || creds?.accessToken;

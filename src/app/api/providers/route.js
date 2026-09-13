@@ -89,6 +89,13 @@ export async function POST(request) {
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);
     const { apiKey, name, displayName, priority, globalPriority, defaultModel, testStatus } = body;
+    // OpenAI Web accepts a pasted ChatGPT session (access + refresh token)
+    // instead of an API key. Gated to openai-web only.
+    const webTokens = provider === "openai-web" ? {
+      accessToken: typeof body.accessToken === "string" && body.accessToken.trim() ? body.accessToken.trim() : null,
+      refreshToken: typeof body.refreshToken === "string" && body.refreshToken.trim() ? body.refreshToken.trim() : null,
+      idToken: typeof body.idToken === "string" && body.idToken.trim() ? body.idToken.trim() : null,
+    } : null;
     const proxyConfig = normalizeProxyConfig(body);
     if (proxyConfig.error) {
       return NextResponse.json({ error: proxyConfig.error }, { status: 400 });
@@ -116,7 +123,7 @@ export async function POST(request) {
     if (!provider || !isValidProvider) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
     }
-    if (!apiKey && provider !== "ollama-local") {
+    if (!apiKey && !webTokens?.accessToken && provider !== "ollama-local") {
       return NextResponse.json({ error: `${isWebCookieProvider ? "Cookie value" : "API Key"} is required` }, { status: 400 });
     }
     const connectionName = name || displayName || AI_PROVIDERS[provider]?.name;
@@ -174,9 +181,12 @@ export async function POST(request) {
 
     const newConnection = await createProviderConnection({
       provider,
-      authType: isWebCookieProvider ? "cookie" : "apikey",
+      authType: webTokens ? (webTokens.refreshToken ? "oauth" : "access_token") : (isWebCookieProvider ? "cookie" : "apikey"),
       name: connectionName,
       apiKey: apiKey || "",
+      ...(webTokens?.accessToken ? { accessToken: webTokens.accessToken } : {}),
+      ...(webTokens?.refreshToken ? { refreshToken: webTokens.refreshToken } : {}),
+      ...(webTokens?.idToken ? { idToken: webTokens.idToken } : {}),
       priority: priority || 1,
       globalPriority: globalPriority || null,
       defaultModel: defaultModel || null,

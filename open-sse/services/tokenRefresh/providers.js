@@ -313,6 +313,75 @@ export async function refreshCodexToken(refreshToken, log) {
   }, log);
 }
 
+const OPENAI_WEB_TERMINAL_REFRESH_MARKERS = [
+  "invalid_grant",
+  "invalid_refresh_token",
+  "refresh_token_invalidated",
+  "refresh_token_expired",
+  "refresh_token_reused",
+  "session has ended",
+];
+
+export async function refreshOpenAIWebToken(refreshToken, log) {
+  if (!refreshToken) return null;
+  return dedupRefresh("openai-web", refreshToken, async () => {
+    try {
+      const tokenUrl = PROVIDERS["openai-web"]?.tokenUrl || OAUTH_ENDPOINTS.openai.token;
+      const clientId = PROVIDERS["openai-web"]?.clientId;
+      const response = await fetch(tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          client_id: clientId,
+          grant_type: "refresh_token",
+          refresh_token: refreshToken,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const combined = `${response.status} ${errorText}`.toLowerCase();
+        const permanent = OPENAI_WEB_TERMINAL_REFRESH_MARKERS.some((marker) => combined.includes(marker));
+        if (permanent) {
+          log?.error?.("TOKEN_REFRESH", "OpenAI Web refresh token invalid or session ended. Re-auth required.", {
+            status: response.status,
+          });
+          return { error: "unrecoverable_refresh_error" };
+        }
+
+        log?.error?.("TOKEN_REFRESH", "Failed to refresh OpenAI Web token", {
+          status: response.status,
+          error: errorText,
+          permanent,
+        });
+        return null;
+      }
+
+      const tokens = await response.json();
+
+      log?.info?.("TOKEN_REFRESH", "Successfully refreshed OpenAI Web token", {
+        hasNewAccessToken: !!tokens.access_token,
+        hasNewRefreshToken: !!tokens.refresh_token,
+        hasIdToken: !!tokens.id_token,
+        expiresIn: tokens.expires_in,
+      });
+
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || refreshToken,
+        idToken: tokens.id_token,
+        expiresIn: tokens.expires_in,
+      };
+    } catch (error) {
+      log?.error?.("TOKEN_REFRESH", `Network error refreshing OpenAI Web token: ${error.message}`);
+      return null;
+    }
+  }, log);
+}
+
 async function resolveKiroProfileArnPatch(providerSpecificData, accessToken, refreshedArn) {
   if (providerSpecificData?.profileArn) return {};
   let profileArn = refreshedArn?.trim?.() || null;

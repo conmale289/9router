@@ -123,6 +123,19 @@ export async function PUT(request, { params }) {
     if (defaultModel !== undefined) updateData.defaultModel = defaultModel;
     if (isActive !== undefined) updateData.isActive = isActive;
     if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;
+    // OpenAI Web token rotation: pasted ChatGPT session refresh (gated to openai-web).
+    if (existing.provider === "openai-web") {
+      if (typeof body.accessToken === "string" && body.accessToken.trim()) {
+        updateData.accessToken = body.accessToken.trim();
+      }
+      if (typeof body.refreshToken === "string" && body.refreshToken.trim()) {
+        updateData.refreshToken = body.refreshToken.trim();
+        if (existing.authType === "access_token") updateData.authType = "oauth";
+      }
+      if (typeof body.idToken === "string" && body.idToken.trim()) {
+        updateData.idToken = body.idToken.trim();
+      }
+    }
     if (testStatus !== undefined) updateData.testStatus = testStatus;
     if (lastError !== undefined) updateData.lastError = lastError;
     if (lastErrorAt !== undefined) updateData.lastErrorAt = lastErrorAt;

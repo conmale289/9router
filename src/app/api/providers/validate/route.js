@@ -253,12 +253,38 @@ export async function POST(request) {
       }
 
       switch (provider) {
-        case "openai":
-          const openaiRes = await fetch("https://api.openai.com/v1/models", {
+        case "openai-web": {
+          // ChatGPT web session: probe the account endpoint. 200 = live
+          // session; 401/403 = expired or invalid access token. A 403 HTML
+          // verification wall means the *network* is fingerprinted, not the
+          // token — report it distinctly so users don't delete a good token.
+          const meRes = await fetch("https://chatgpt.com/backend-api/me", {
             headers: { "Authorization": `Bearer ${apiKey}` },
+            signal: AbortSignal.timeout(8000),
+          });
+          isValid = meRes.ok;
+          if (!isValid) {
+            const ct = meRes.headers?.get?.("content-type") || "";
+            const bodyHead = (await meRes.text().catch(() => "")).slice(0, 200).toLowerCase();
+            if (/text\/html/i.test(ct) || bodyHead.includes("<html")) {
+              error = "Upstream verification wall (network fingerprinted — token not checked). Retry from unwalled egress.";
+            }
+          }
+          break;
+        }
+        case "openai": {
+          // Honor a per-connection custom endpoint (e.g. OpenAI-compatible proxy);
+          // default to the official API. Validates via <base>/models.
+          const override = (providerSpecificData?.baseUrl || "").trim().replace(/\/+$/, "")
+            .replace(/\/images\/generations$/, "");
+          const modelsUrl = override ? `${override}/models` : "https://api.openai.com/v1/models";
+          const openaiRes = await fetch(modelsUrl, {
+            headers: { "Authorization": `Bearer ${apiKey}` },
+            signal: AbortSignal.timeout(8000),
           });
           isValid = openaiRes.ok;
           break;
+        }
 
         case "vercel-ai-gateway":
           const vercelAiGatewayRes = await fetch("https://ai-gateway.vercel.sh/v1/models", {

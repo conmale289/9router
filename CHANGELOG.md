@@ -1,3 +1,14 @@
+# Unreleased
+
+## Features
+- **OpenAI Web**: new `openai-web` provider speaking the chatgpt.com conversation API (text chat + Web image path) via stored ChatGPT sessions — AT/RT paste, session-JSON import, and PKCE OAuth bridge; per-connection account fallback, 24h-skew token refresh, and `/backend-api/me` key validation
+- **OpenAI image**: `openai` text-to-image now honors a per-connection Custom Base URL (dashboard field on add/edit), defaulting to `https://api.openai.com/v1/images/generations`
+
+## Fixes
+- **Models test**: image probes get a 120s timeout (was 15s — every render timed out) and return structured errors instead of a 500
+- **Providers validate**: `openai` validation honors `providerSpecificData.baseUrl`; `openai-web` reports the upstream verification wall distinctly instead of "Invalid API key"
+- **OpenAI Web anti-abuse**: stable per-connection device IDs, cookie-jar continuity across handshake calls, optional pasted browser cookies, FlareSolverr-compatible clearance solver support per connection, tolerant token-claim decoding with corruption warnings, and a 10-minute cooldown on wall errors instead of hammering flagged accounts
+
 # v0.5.75 (2026-09-10)
 
 ## Features
